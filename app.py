@@ -4,13 +4,15 @@ import openai
 import os
 from anchor_utils import match_links_and_generate_anchors
 
+# Load OPENAI_API_KEY from .env or environment variables automatically
 openai.api_key = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI()  # instantiate client for new API usage
 
 def test_openai_connection():
     if not openai.api_key:
         return False, "OPENAI_API_KEY not set"
     try:
-        openai.ChatCompletion.create(
+        client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": "Test connection"}],
             max_tokens=5,

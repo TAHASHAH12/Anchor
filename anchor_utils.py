@@ -5,6 +5,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import openai
 from langdetect import detect
 
+client = openai.OpenAI()  # New client for openai 1.x+
+
 def clean_text(text):
     if pd.isna(text):
         return ""
@@ -26,7 +28,7 @@ def generate_anchor(text_snippet, keyword):
         f"List anchors separated by commas:"
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
