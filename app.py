@@ -30,6 +30,7 @@ if opp_file and stake_file:
             opp_df.columns,
             index=opp_df.columns.get_loc("Anchor") if "Anchor" in opp_df.columns else 0
         )
+
         stake_url_col = st.selectbox(
             "Internal Links CSV: URL Column",
             stake_df.columns,

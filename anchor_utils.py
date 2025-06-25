@@ -6,12 +6,11 @@ import openai
 from langdetect import detect
 import os
 
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure your key is set in env variables
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Set your OpenAI API key in env
 
 def clean_text(text):
     if pd.isna(text):
         return ""
-    # Lowercase and remove punctuation except spaces
     return re.sub(r"[^\w\s]", "", text.lower())
 
 def detect_language(text):
@@ -38,12 +37,13 @@ def generate_anchor(text_snippet, keyword):
         )
         anchors_text = response.choices[0].message.content.strip()
         anchors = [a.strip() for a in anchors_text.split(",") if a.strip()]
+        # Filter out the original anchor if present
         anchors = [a for a in anchors if a.lower() != keyword.lower()]
         if not anchors:
-            return keyword
-        return anchors[0]
+            return [keyword]
+        return anchors
     except Exception:
-        return keyword
+        return [keyword]
 
 def match_links_and_generate_anchors(
     opportunities_df,
@@ -54,7 +54,7 @@ def match_links_and_generate_anchors(
     stake_url_col,
     stake_lang_col,
 ):
-    # Prepare and clean text columns
+    # Prepare clean text
     opportunities_df['clean_text'] = (
         opportunities_df[opp_url_col].fillna('').astype(str) + " " +
         opportunities_df[anchor_col].fillna('').astype(str)
@@ -63,7 +63,6 @@ def match_links_and_generate_anchors(
     internal_links_df[stake_topic_col] = internal_links_df[stake_topic_col].fillna('').astype(str).apply(clean_text)
     internal_links_df[stake_lang_col] = internal_links_df[stake_lang_col].fillna('en')
 
-    # Fit TF-IDF on internal topics
     vectorizer = TfidfVectorizer().fit(internal_links_df[stake_topic_col])
 
     results = []
@@ -87,13 +86,14 @@ def match_links_and_generate_anchors(
 
         snippet = text[:400]
 
-        suggested_anchor = generate_anchor(snippet, original_anchor)
+        suggested_anchors_list = generate_anchor(snippet, original_anchor)
+        suggested_anchors = "; ".join(suggested_anchors_list)
 
         results.append({
             "Opportunity URL": row[opp_url_col],
             "Suggested Internal Link": best_url,
             "Original Anchor": original_anchor,
-            "Suggested Anchor Text": suggested_anchor,
+            "Suggested Anchor Texts": suggested_anchors,
             "Detected Language": lang
         })
 
