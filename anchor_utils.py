@@ -6,7 +6,7 @@ import os
 import re
 from langdetect import detect
 
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Store securely in environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def clean_text(text):
     if pd.isna(text):
@@ -15,10 +15,10 @@ def clean_text(text):
 
 def generate_anchor(text_snippet, keyword):
     prompt = (
-        f"Suggest a short anchor text (max 4 words) using '{keyword}' as a base. "
-        "It should not sound like an article title. Focus on natural, linkable phrases like "
-        "'play darts online', 'online roulette', 'bet on cricket', etc. "
-        f"Text context:\n{text_snippet}\n\nAnchor:"
+        f"Suggest a short anchor text (max 4 words) using '{keyword}' as the base term. "
+        "It should be natural, sound like a short anchor text, not an article title. "
+        "Examples: 'play poker', 'online darts', 'bet on F1', 'roulette online', etc.\n\n"
+        f"Context: {text_snippet}\n\nAnchor:"
     )
 
     try:
@@ -30,7 +30,7 @@ def generate_anchor(text_snippet, keyword):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        return "Stake"
+        return keyword or "Stake"
 
 def detect_language(text):
     try:
@@ -38,40 +38,39 @@ def detect_language(text):
     except:
         return "en"
 
-def match_links_and_generate_anchors(opportunities_df, stake_df):
-    opportunities_df['Cleaned Text'] = opportunities_df['Live Link'].fillna('').astype(str) + " " + opportunities_df['Anchor'].fillna('')
+def match_links_and_generate_anchors(opportunities_df, stake_df, anchor_col, opp_url_col, stake_topic_col, stake_url_col, stake_lang_col):
+    # Clean and prepare text columns
+    opportunities_df['Cleaned Text'] = opportunities_df[opp_url_col].fillna('').astype(str) + " " + opportunities_df[anchor_col].fillna('')
     opportunities_df['Cleaned Text'] = opportunities_df['Cleaned Text'].apply(clean_text)
 
-    stake_df['topic'] = stake_df['topic'].fillna('').astype(str).apply(clean_text)
-    stake_df['lang'] = stake_df['lang'].fillna('en')
+    stake_df[stake_topic_col] = stake_df[stake_topic_col].fillna('').astype(str).apply(clean_text)
+    stake_df[stake_lang_col] = stake_df[stake_lang_col].fillna('en')
 
-    vectorizer = TfidfVectorizer().fit(stake_df['topic'])
-    stake_vectors = vectorizer.transform(stake_df['topic'])
-
+    # Fit vectorizer on stake topics
+    vectorizer = TfidfVectorizer().fit(stake_df[stake_topic_col])
     results = []
 
     for _, row in opportunities_df.iterrows():
         ext_text = row['Cleaned Text']
-        keyword = row['Anchor']
+        keyword = row[anchor_col]
         lang = detect_language(ext_text)
 
         ext_vec = vectorizer.transform([ext_text])
-        stake_df_lang_filtered = stake_df[stake_df['lang'].str.startswith(lang[:2])]
+        stake_filtered = stake_df[stake_df[stake_lang_col].str.startswith(lang[:2])]
 
-        if stake_df_lang_filtered.empty:
-            stake_df_lang_filtered = stake_df  # fallback to all
+        if stake_filtered.empty:
+            stake_filtered = stake_df  # fallback
 
-        stake_vectors_lang = vectorizer.transform(stake_df_lang_filtered['topic'])
-        similarities = cosine_similarity(ext_vec, stake_vectors_lang).flatten()
+        stake_vectors = vectorizer.transform(stake_filtered[stake_topic_col])
+        similarities = cosine_similarity(ext_vec, stake_vectors).flatten()
         best_idx = similarities.argmax()
 
-        best_url = stake_df_lang_filtered.iloc[best_idx]['url']
+        best_url = stake_filtered.iloc[best_idx][stake_url_col]
         snippet = row['Cleaned Text'][:400]
-
         anchor = generate_anchor(snippet, keyword)
 
         results.append({
-            "Live Link": row['Live Link'],
+            "Live Link": row[opp_url_col],
             "Matched Stake URL": best_url,
             "Suggested Anchor Text": anchor,
             "Language": lang,
