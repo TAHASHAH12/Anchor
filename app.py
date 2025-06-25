@@ -24,9 +24,9 @@ if opp_file and stake_file:
         opp_anchor_col = st.selectbox("Opportunities: Anchor Column", opportunities_df.columns, index=opportunities_df.columns.get_loc("Anchor") if "Anchor" in opportunities_df.columns else 0)
         opp_url_col = st.selectbox("Opportunities: Live Link Column", opportunities_df.columns, index=opportunities_df.columns.get_loc("Live Link") if "Live Link" in opportunities_df.columns else 0)
 
-        stake_topic_col = st.selectbox("Stake: Topic Column", stake_df.columns, index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0)
-        stake_url_col = st.selectbox("Stake: URL Column", stake_df.columns, index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0)
-        stake_lang_col = st.selectbox("Stake: Language Column", stake_df.columns, index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0)
+        stake_topic_col = st.selectbox("Client: Topic Column can select anchor column as well if no topic column", stake_df.columns, index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0)
+        stake_url_col = st.selectbox("Client: URL Column", stake_df.columns, index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0)
+        stake_lang_col = st.selectbox("Select: Language Column", stake_df.columns, index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0)
 
     st.success("✅ Processing smart matching...")
 
