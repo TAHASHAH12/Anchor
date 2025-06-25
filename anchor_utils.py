@@ -4,14 +4,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
 from langdetect import detect
-
 import os
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Set your OpenAI key in environment variables
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def clean_text(text):
     if pd.isna(text):
         return ""
-    # Lowercase and remove punctuation except spaces
     return re.sub(r"[^\w\s]", "", text.lower())
 
 def detect_language(text):
@@ -20,22 +19,30 @@ def detect_language(text):
     except:
         return "en"
 
-def generate_anchor(text_snippet, keyword):
+def generate_anchor(text_snippet, original_anchor):
     prompt = (
-        f"Suggest a short, natural, linkable anchor text (max 4 words) using '{keyword}' as a base keyword. "
-        "Avoid article titles. Examples: 'play darts online', 'online roulette', 'bet on cricket'.\n"
-        f"Context snippet:\n{text_snippet}\n\nAnchor text suggestion:"
+        f"You are an SEO expert generating anchor text suggestions for internal linking.\n"
+        f"Given this article snippet:\n\"\"\"\n{text_snippet}\n\"\"\"\n"
+        f"And the original anchor text: '{original_anchor}'.\n"
+        "Suggest a short (max 4 words), natural, and relevant anchor text that could be used instead, "
+        "incorporating the core meaning or keyword but making it sound natural and clickable.\n"
+        "Examples include phrases like 'play darts online', 'online roulette', 'bet on cricket'.\n"
+        "Do NOT simply repeat the original anchor.\n"
+        "Suggested anchor text:"
     )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=12,
+            temperature=0.5,
+            max_tokens=15,
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return keyword  # fallback to original keyword if error
+        suggested = response.choices[0].message.content.strip()
+        if suggested.lower() == original_anchor.lower():
+            return f"Play {original_anchor}"
+        return suggested
+    except Exception:
+        return original_anchor
 
 def match_links_and_generate_anchors(
     opportunities_df,
@@ -46,7 +53,6 @@ def match_links_and_generate_anchors(
     stake_url_col,
     stake_lang_col,
 ):
-    # Prepare and clean text columns
     opportunities_df['clean_text'] = (
         opportunities_df[opp_url_col].fillna('').astype(str) + " " +
         opportunities_df[anchor_col].fillna('').astype(str)
@@ -55,20 +61,18 @@ def match_links_and_generate_anchors(
     internal_links_df[stake_topic_col] = internal_links_df[stake_topic_col].fillna('').astype(str).apply(clean_text)
     internal_links_df[stake_lang_col] = internal_links_df[stake_lang_col].fillna('en')
 
-    # Fit TF-IDF on internal topics
     vectorizer = TfidfVectorizer().fit(internal_links_df[stake_topic_col])
 
     results = []
 
     for _, row in opportunities_df.iterrows():
         text = row['clean_text']
-        original_anchor = row[anchor_col]  # original anchor from CSV
+        original_anchor = row[anchor_col]
         lang = detect_language(text)
 
-        # Filter internal links by detected language prefix
         filtered_links = internal_links_df[internal_links_df[stake_lang_col].str.startswith(lang[:2])]
         if filtered_links.empty:
-            filtered_links = internal_links_df  # fallback to all if none match lang
+            filtered_links = internal_links_df
 
         filtered_vectors = vectorizer.transform(filtered_links[stake_topic_col])
         text_vec = vectorizer.transform([text])
@@ -80,7 +84,6 @@ def match_links_and_generate_anchors(
 
         snippet = text[:400]
 
-        # Generate suggested anchor with OpenAI GPT
         suggested_anchor = generate_anchor(snippet, original_anchor)
 
         results.append({
