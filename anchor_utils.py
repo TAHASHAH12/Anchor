@@ -6,7 +6,7 @@ import openai
 from langdetect import detect
 import os
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure your key is set
 
 def clean_text(text):
     if pd.isna(text):
@@ -19,30 +19,53 @@ def detect_language(text):
     except:
         return "en"
 
-def generate_anchor(text_snippet, original_anchor):
+def is_similar(a, b, threshold=0.8):
+    # simple similarity check (case insensitive substring or exact match)
+    a = a.lower()
+    b = b.lower()
+    if a == b:
+        return True
+    if a in b or b in a:
+        return True
+    # Could extend to fuzzy matching if needed
+    return False
+
+def generate_anchor(text_snippet, keyword):
     prompt = (
-        f"You are an SEO expert generating anchor text suggestions for internal linking.\n"
-        f"Given this article snippet:\n\"\"\"\n{text_snippet}\n\"\"\"\n"
-        f"And the original anchor text: '{original_anchor}'.\n"
-        "Suggest a short (max 4 words), natural, and relevant anchor text that could be used instead, "
-        "incorporating the core meaning or keyword but making it sound natural and clickable.\n"
-        "Examples include phrases like 'play darts online', 'online roulette', 'bet on cricket'.\n"
-        "Do NOT simply repeat the original anchor.\n"
-        "Suggested anchor text:"
+        f"Suggest a short, natural, linkable anchor text (max 4 words) using '{keyword}' as a base keyword. "
+        "Avoid article titles. Examples: 'play darts online', 'online roulette', 'bet on cricket'.\n"
+        f"Context snippet:\n{text_snippet}\n\nAnchor text suggestion:"
     )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.5,
-            max_tokens=15,
+            temperature=0.4,
+            max_tokens=12,
         )
-        suggested = response.choices[0].message.content.strip()
-        if suggested.lower() == original_anchor.lower():
-            return f"Play {original_anchor}"
-        return suggested
-    except Exception:
-        return original_anchor
+        anchor_suggestion = response.choices[0].message.content.strip()
+
+        # If the suggestion is too close or identical to original, do fallback tweaks
+        if is_similar(anchor_suggestion, keyword):
+            # Simple fallback variations to diversify
+            variants = [
+                f"play {keyword}",
+                f"try {keyword}",
+                f"{keyword} online",
+                f"online {keyword}",
+                f"best {keyword}"
+            ]
+            for variant in variants:
+                if not is_similar(variant, keyword):
+                    return variant
+            # If all variants similar, return original keyword anyway
+            return keyword
+
+        return anchor_suggestion
+
+    except Exception as e:
+        # On error, fallback to original anchor keyword
+        return keyword
 
 def match_links_and_generate_anchors(
     opportunities_df,
@@ -67,7 +90,7 @@ def match_links_and_generate_anchors(
 
     for _, row in opportunities_df.iterrows():
         text = row['clean_text']
-        original_anchor = row[anchor_col]
+        original_anchor = str(row[anchor_col])
         lang = detect_language(text)
 
         filtered_links = internal_links_df[internal_links_df[stake_lang_col].str.startswith(lang[:2])]
