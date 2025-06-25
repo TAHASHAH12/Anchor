@@ -1,63 +1,79 @@
-import os
-import requests
-from bs4 import BeautifulSoup
-from openai import OpenAI
+import re
+import numpy as np
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI client (make sure OPENAI_API_KEY is set in env variables)
+client = OpenAI()
 
-def extract_text_from_url(url):
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        # Extract main article text; simple version: all <p>
-        paragraphs = soup.find_all("p")
-        text = " ".join(p.get_text() for p in paragraphs)
-        return text
-    except Exception as e:
-        return ""
+# Generic anchors to exclude
+GENERIC_ANCHORS = {"click here", "bonus", "read more", "here", "link"}
 
-def generate_anchor_suggestions(text, max_tokens=256):
-    if not text or len(text.strip()) < 10:
-        return []
+def clean_text(text):
+    text = re.sub(r"\s+", " ", text)
+    return text.strip().lower()
 
+def generate_anchor_suggestions(text, max_suggestions=10):
+    """
+    Generate anchor text suggestions based on input text using OpenAI.
+    """
+    # Basic prompt to get anchor suggestions, avoiding essay-like text
     prompt = (
-        "Suggest 10 concise, varied, and natural anchor texts for linking within this article text."
-        " Avoid generic phrases like 'click here' or 'bonus'."
-        " The suggestions should be semantically relevant, not long paragraphs."
-        " Provide only the anchor texts separated by commas.\n\n"
-        f"Article text:\n{text[:2000]}"
+        "Suggest a list of short, natural, varied anchor text phrases "
+        "related to the main topic of this text. Avoid generic anchors "
+        "like 'click here' or 'bonus'. Each suggestion should be concise, "
+        "no longer than 4 words:\n\n"
+        f"{text}\n\nSuggestions:"
     )
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
+            max_tokens=200,
             temperature=0.7,
             n=1,
-            stop=None,
         )
         suggestions_text = response.choices[0].message.content.strip()
-        # Split by commas or new lines to get list of suggestions
-        suggestions = []
-        for part in suggestions_text.replace("\n", ",").split(","):
-            candidate = part.strip()
-            if candidate and len(candidate) <= 60:  # limit length for anchors
-                suggestions.append(candidate)
-        # Deduplicate
-        suggestions = list(dict.fromkeys(suggestions))
-        return suggestions[:10]
+        # Extract suggestions as list - assume one per line
+        suggestions = [line.strip("- ").strip() for line in suggestions_text.split("\n") if line.strip()]
+        # Filter out generic anchors and duplicates
+        filtered = []
+        for s in suggestions:
+            s_clean = clean_text(s)
+            if s_clean and s_clean not in GENERIC_ANCHORS and s_clean not in filtered:
+                filtered.append(s)
+            if len(filtered) >= max_suggestions:
+                break
+        return filtered
     except Exception as e:
+        print(f"OpenAI API error: {e}")
         return []
 
 def recommend_internal_link(anchors, internal_links):
-    # internal_links: DataFrame with ['topic', 'url'] columns
+    """
+    Recommend the best internal link for each anchor text based on
+    TF-IDF cosine similarity between anchor text and internal link topics.
+
+    internal_links: pd.DataFrame with columns ['topic', 'url']
+    anchors: list of strings (anchor texts)
+    """
     if not anchors or internal_links.empty:
         return []
 
+    # Clean internal_links
     internal_links = internal_links.dropna(subset=['topic', 'url'])
+    internal_links = internal_links[
+        (internal_links['topic'].astype(str).str.strip() != '') &
+        (internal_links['url'].astype(str).str.strip() != '')
+    ]
     if internal_links.empty:
+        return []
+
+    # Clean anchors
+    anchors = [str(a).strip() for a in anchors if str(a).strip()]
+    if not anchors:
         return []
 
     corpus = internal_links['topic'].astype(str).tolist() + anchors
