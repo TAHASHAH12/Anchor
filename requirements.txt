@@ -1,0 +1,7 @@
+streamlit
+openai
+python-dotenv
+beautifulsoup4
+pandas
+scikit-learn
+nltk

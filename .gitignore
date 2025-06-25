@@ -1,0 +1,16 @@
+# Ignore the .env file that contains your API key
+.env
+suggest/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Streamlit
+.streamlit/
