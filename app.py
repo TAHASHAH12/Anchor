@@ -1,55 +1,48 @@
-import os
 import streamlit as st
 import pandas as pd
-from anchor_utils import generate_anchor_suggestions, recommend_internal_link
+from anchor_utils import generate_anchor_suggestions, recommend_internal_link, parse_html_from_url
 
-st.title("Smart Anchor Text Suggestions Tool")
+st.title("🔗 Smart Anchor Text Suggestion Tool")
 
-# Upload CSV of internal links
-uploaded_file = st.file_uploader("Upload internal links CSV with columns 'topic' and 'url'", type=["csv"])
-internal_links = pd.DataFrame()
+# Upload CSV
+uploaded_file = st.file_uploader("Upload stake_links.csv (with 'topic' and 'url' columns)", type=["csv"])
+stake_links = None
+
 if uploaded_file:
-    try:
-        internal_links = pd.read_csv(uploaded_file)
-        st.success(f"Loaded {len(internal_links)} internal links")
-        # Let user pick columns if needed
-        cols = internal_links.columns.tolist()
-        topic_col = st.selectbox("Select Topic column", cols, index=cols.index("topic") if "topic" in cols else 0)
-        url_col = st.selectbox("Select URL column", cols, index=cols.index("url") if "url" in cols else 1)
-        # Rename for consistency
-        internal_links = internal_links.rename(columns={topic_col: "topic", url_col: "url"})
-        internal_links = internal_links[["topic", "url"]]
-    except Exception as e:
-        st.error(f"Failed to read CSV: {e}")
+    stake_links = pd.read_csv(uploaded_file)
+    st.success("Stake URLs loaded!")
 
-# Input blog/article text
-raw_text = st.text_area("Paste blog or article text here")
+    # Optional dropdown to let user confirm columns
+    col_topic = st.selectbox("Select topic column", stake_links.columns, index=0)
+    col_url = st.selectbox("Select URL column", stake_links.columns, index=1)
+    stake_links = stake_links.rename(columns={col_topic: "topic", col_url: "url"})
 
-if st.button("Generate Anchor Suggestions and Recommendations"):
-    if not raw_text.strip():
-        st.warning("Please enter some blog/article text")
-    elif internal_links.empty:
-        st.warning("Please upload a valid CSV with internal links")
+# Input blog
+st.subheader("📄 Enter Blog Content or URL")
+input_mode = st.radio("Choose input method:", ["Paste blog text", "Fetch from URL"])
+
+raw_text = ""
+if input_mode == "Paste blog text":
+    raw_text = st.text_area("Paste blog content here")
+else:
+    input_url = st.text_input("Enter blog URL to scrape HTML")
+    if input_url:
+        raw_text = parse_html_from_url(input_url)
+        st.success("Content extracted from URL!")
+
+# Anchor Suggestion
+if raw_text and stake_links is not None:
+    with st.spinner("Generating anchor suggestions..."):
+        anchor_suggestions = generate_anchor_suggestions(raw_text)
+
+    st.subheader("🔍 Suggested Anchor Texts")
+    filtered_anchors = [a for a in anchor_suggestions if a.lower() not in raw_text.lower()]
+    st.write(filtered_anchors)
+
+    if not filtered_anchors:
+        st.info("No new anchor suggestions found.")
     else:
-        with st.spinner("Generating anchor suggestions..."):
-            anchor_suggestions = generate_anchor_suggestions(raw_text)
-        
-        if anchor_suggestions:
-            st.subheader("Anchor Text Suggestions")
-            st.write(anchor_suggestions)
-
-            # Filter out anchors that already appear as hyperlinks in the text (simple check)
-            filtered_anchors = [a for a in anchor_suggestions if a.lower() not in raw_text.lower()]
-            if filtered_anchors:
-                with st.spinner("Recommending internal links..."):
-                    recommended = recommend_internal_link(filtered_anchors, internal_links)
-                if recommended:
-                    st.subheader("Recommended Internal Links")
-                    df_recommended = pd.DataFrame(recommended, columns=["Anchor Text", "Suggested URL"])
-                    st.dataframe(df_recommended)
-                else:
-                    st.info("No suitable internal links found for the suggested anchors.")
-            else:
-                st.info("No new anchor suggestions found after filtering already linked text.")
-        else:
-            st.info("No anchor suggestions generated.")
+        st.subheader("🔗 Recommended Internal Links")
+        recommended = recommend_internal_link(filtered_anchors, stake_links)
+        df_recommended = pd.DataFrame(recommended, columns=["Anchor Text", "Recommended Stake URL"])
+        st.dataframe(df_recommended)
