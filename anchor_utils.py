@@ -6,11 +6,12 @@ import openai
 from langdetect import detect
 import os
 
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure your key is set
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Make sure your key is set in env variables
 
 def clean_text(text):
     if pd.isna(text):
         return ""
+    # Lowercase and remove punctuation except spaces
     return re.sub(r"[^\w\s]", "", text.lower())
 
 def detect_language(text):
@@ -19,52 +20,29 @@ def detect_language(text):
     except:
         return "en"
 
-def is_similar(a, b, threshold=0.8):
-    # simple similarity check (case insensitive substring or exact match)
-    a = a.lower()
-    b = b.lower()
-    if a == b:
-        return True
-    if a in b or b in a:
-        return True
-    # Could extend to fuzzy matching if needed
-    return False
-
 def generate_anchor(text_snippet, keyword):
     prompt = (
-        f"Suggest a short, natural, linkable anchor text (max 4 words) using '{keyword}' as a base keyword. "
-        "Avoid article titles. Examples: 'play darts online', 'online roulette', 'bet on cricket'.\n"
-        f"Context snippet:\n{text_snippet}\n\nAnchor text suggestion:"
+        f"Based on the following context, suggest 3 short, natural, linkable anchor texts (max 4 words) "
+        f"that are relevant to the topic but do NOT just repeat the original anchor '{keyword}'. "
+        f"These anchors should be suitable for internal linking and include the idea of '{keyword}' if possible, "
+        f"but offer useful variations or expansions. Examples: 'play darts online', 'best darts sites', 'darts tips online'.\n"
+        f"Context snippet:\n{text_snippet}\n\n"
+        f"List anchors separated by commas:"
     )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.4,
-            max_tokens=12,
+            temperature=0.7,
+            max_tokens=50,
         )
-        anchor_suggestion = response.choices[0].message.content.strip()
-
-        # If the suggestion is too close or identical to original, do fallback tweaks
-        if is_similar(anchor_suggestion, keyword):
-            # Simple fallback variations to diversify
-            variants = [
-                f"play {keyword}",
-                f"try {keyword}",
-                f"{keyword} online",
-                f"online {keyword}",
-                f"best {keyword}"
-            ]
-            for variant in variants:
-                if not is_similar(variant, keyword):
-                    return variant
-            # If all variants similar, return original keyword anyway
+        anchors_text = response.choices[0].message.content.strip()
+        anchors = [a.strip() for a in anchors_text.split(",") if a.strip()]
+        anchors = [a for a in anchors if a.lower() != keyword.lower()]
+        if not anchors:
             return keyword
-
-        return anchor_suggestion
-
-    except Exception as e:
-        # On error, fallback to original anchor keyword
+        return anchors[0]
+    except Exception:
         return keyword
 
 def match_links_and_generate_anchors(
@@ -76,6 +54,7 @@ def match_links_and_generate_anchors(
     stake_url_col,
     stake_lang_col,
 ):
+    # Prepare and clean text columns
     opportunities_df['clean_text'] = (
         opportunities_df[opp_url_col].fillna('').astype(str) + " " +
         opportunities_df[anchor_col].fillna('').astype(str)
@@ -84,13 +63,14 @@ def match_links_and_generate_anchors(
     internal_links_df[stake_topic_col] = internal_links_df[stake_topic_col].fillna('').astype(str).apply(clean_text)
     internal_links_df[stake_lang_col] = internal_links_df[stake_lang_col].fillna('en')
 
+    # Fit TF-IDF on internal topics
     vectorizer = TfidfVectorizer().fit(internal_links_df[stake_topic_col])
 
     results = []
 
     for _, row in opportunities_df.iterrows():
         text = row['clean_text']
-        original_anchor = str(row[anchor_col])
+        original_anchor = row[anchor_col]
         lang = detect_language(text)
 
         filtered_links = internal_links_df[internal_links_df[stake_lang_col].str.startswith(lang[:2])]

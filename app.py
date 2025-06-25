@@ -20,12 +20,31 @@ if opp_file and stake_file:
     st.write("Select the relevant columns for your data:")
 
     with st.form("column_selector_form"):
-        opp_url_col = st.selectbox("Opportunities CSV: URL Column", opp_df.columns, index=opp_df.columns.get_loc("Live Link") if "Live Link" in opp_df.columns else 0)
-        anchor_col = st.selectbox("Opportunities CSV: Anchor Text Column", opp_df.columns, index=opp_df.columns.get_loc("Anchor") if "Anchor" in opp_df.columns else 0)
-
-        stake_url_col = st.selectbox("Internal Links CSV: URL Column", stake_df.columns, index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0)
-        stake_topic_col = st.selectbox("Internal Links CSV: Topic/Keyword Column", stake_df.columns, index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0)
-        stake_lang_col = st.selectbox("Internal Links CSV: Language Column", stake_df.columns, index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0)
+        opp_url_col = st.selectbox(
+            "Opportunities CSV: URL Column",
+            opp_df.columns,
+            index=opp_df.columns.get_loc("Live Link") if "Live Link" in opp_df.columns else 0
+        )
+        anchor_col = st.selectbox(
+            "Opportunities CSV: Anchor Text Column",
+            opp_df.columns,
+            index=opp_df.columns.get_loc("Anchor") if "Anchor" in opp_df.columns else 0
+        )
+        stake_url_col = st.selectbox(
+            "Internal Links CSV: URL Column",
+            stake_df.columns,
+            index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0
+        )
+        stake_topic_col = st.selectbox(
+            "Internal Links CSV: Topic/Keyword Column",
+            stake_df.columns,
+            index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0
+        )
+        stake_lang_col = st.selectbox(
+            "Internal Links CSV: Language Column",
+            stake_df.columns,
+            index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0
+        )
 
         submitted = st.form_submit_button("Process Matching")
 
