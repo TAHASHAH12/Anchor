@@ -2,71 +2,65 @@ import streamlit as st
 import pandas as pd
 from anchor_utils import match_links_and_generate_anchors
 
-st.set_page_config(page_title="Smart Anchor Matcher", layout="wide")
-
-st.title("🔗 Anchor Text + Internal Link Matcher for Stake")
+st.set_page_config(page_title="Smart Anchor & Link Matcher", layout="wide")
+st.title("🔗 Smart Anchor Text + Internal Link Matcher")
 
 st.markdown("""
-Upload two CSV files and select the relevant columns for URLs, anchors, and topics.
-Then click **Process** to get recommended internal links and anchor texts.
+Upload two CSV files:
+
+1. **Opportunities CSV** – URLs/articles where you want to insert links.
+2. **Internal Links CSV** – Your internal link targets with metadata (topics, languages, URLs).
 """)
 
+# Upload files
 opp_file = st.file_uploader("Upload Opportunities CSV", type=["csv"], key="opp")
-stake_file = st.file_uploader("Upload Stake Internal Links CSV", type=["csv"], key="stake")
+stake_file = st.file_uploader("Upload Internal Links CSV", type=["csv"], key="stake")
 
-def select_column(df, label):
-    options = list(df.columns)
-    return st.selectbox(label, options)
-
-opportunities_df = None
-stake_df = None
-
+# Load files and show sample columns for column selection
 if opp_file:
     opportunities_df = pd.read_csv(opp_file)
-    st.write("Opportunities CSV preview:")
+    st.write("### Opportunities CSV preview")
     st.dataframe(opportunities_df.head())
-
-    opp_url_col = select_column(opportunities_df, "Select Opportunities URL column")
-    opp_anchor_col = select_column(opportunities_df, "Select Opportunities Anchor Text column (if any)")
-    opp_text_col = select_column(opportunities_df, "Select Opportunities Text/Content column (optional, else leave blank)")
+    opp_cols = opportunities_df.columns.tolist()
+else:
+    opportunities_df = None
+    opp_cols = []
 
 if stake_file:
     stake_df = pd.read_csv(stake_file)
-    st.write("Stake Internal Links CSV preview:")
+    st.write("### Internal Links CSV preview")
     st.dataframe(stake_df.head())
+    stake_cols = stake_df.columns.tolist()
+else:
+    stake_df = None
+    stake_cols = []
 
-    stake_url_col = select_column(stake_df, "Select Stake URL column")
-    stake_topic_col = select_column(stake_df, "Select Stake Topic column")
-    stake_lang_col = select_column(stake_df, "Select Stake Language column (optional, else leave blank)")
+if opportunities_df is not None and stake_df is not None:
+    st.markdown("---")
+    st.write("### Select relevant columns from your CSVs")
 
-process = st.button("🔍 Process Matching and Generate Anchors")
+    opp_url_col = st.selectbox("Select Opportunities URL Column", opp_cols, key="opp_url")
+    opp_anchor_col = st.selectbox("Select Opportunities Anchor Column", opp_cols, key="opp_anchor")
 
-if process:
-    if not (opp_file and stake_file):
-        st.error("Please upload both CSV files before processing.")
-    else:
-        st.info("✅ Processing smart matching...")
+    stake_url_col = st.selectbox("Select Internal Links URL Column", stake_cols, key="stake_url")
+    stake_topic_col = st.selectbox("Select Internal Links Topic/Keyword Column", stake_cols, key="stake_topic")
+    stake_lang_col = st.selectbox("Select Internal Links Language Column", stake_cols, key="stake_lang")
 
-        # Prepare DataFrames with expected columns
-        opp_df = opportunities_df.copy()
-        stake_df_cp = stake_df.copy()
+    process = st.button("Process & Generate Recommendations")
 
-        opp_df['Live Link'] = opp_df[opp_url_col].astype(str)
-        opp_df['Anchor'] = opp_df[opp_anchor_col].astype(str) if opp_anchor_col else ""
-        if opp_text_col and opp_text_col.strip() != "":
-            opp_df['Content'] = opp_df[opp_text_col].astype(str)
-        else:
-            opp_df['Content'] = ""
+    if process:
+        with st.spinner("Processing matching and generating anchors..."):
+            results_df = match_links_and_generate_anchors(
+                opportunities_df,
+                stake_df,
+                anchor_col=opp_anchor_col,
+                opp_url_col=opp_url_col,
+                stake_topic_col=stake_topic_col,
+                stake_url_col=stake_url_col,
+                stake_lang_col=stake_lang_col
+            )
 
-        stake_df_cp['url'] = stake_df_cp[stake_url_col].astype(str)
-        stake_df_cp['topic'] = stake_df_cp[stake_topic_col].astype(str)
-        if stake_lang_col and stake_lang_col.strip() != "":
-            stake_df_cp['lang'] = stake_df_cp[stake_lang_col].astype(str)
-        else:
-            stake_df_cp['lang'] = "en"
-
-        results_df = match_links_and_generate_anchors(opp_df, stake_df_cp)
-
+        st.success("✅ Done!")
         st.subheader("🔍 Recommended Internal Links + Anchor Texts")
         st.dataframe(results_df)
 
