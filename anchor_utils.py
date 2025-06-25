@@ -1,67 +1,43 @@
-import os
-import requests
-from bs4 import BeautifulSoup
+import json
 import pandas as pd
-from openai import OpenAI
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-def parse_html_from_url(url):
-    try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.text, "html.parser")
-        return soup.get_text(separator=" ", strip=True)
-    except:
-        return ""
-
-def generate_anchor_suggestions(blog_text):
+def generate_anchor_texts(client, topic: str):
     prompt = f"""
-You are a link building assistant. Your task is to read the blog content and return a list of concise, keyword-rich anchor texts (2 to 5 words). These anchors should sound natural, reflect the page's theme, and resemble examples like:
+You are an SEO anchor text expert.
 
-"cricket betting", "online roulette", "casino game odds", "bet on darts", "NFL betting odds", "slot gratis", "Stake", "blackjack", "casino RNG games"
+Given a main keyword/topic, generate a list of 10 natural, concise anchor texts for internal linking.
 
-Avoid:
+Constraints:
+- Each anchor text must be 2 to 4 words max.
+- Each anchor text must contain the main keyword or its close variation.
+- Use varied phrasing that looks natural in an article.
+- Avoid article titles, long phrases, or generic terms like "click here".
+- Examples for the keyword "darts": "play darts online", "online darts", "bet on darts", "darts on Stake".
 
-- Generic terms like "click here"
-- Full sentence or title-style phrases
-- Repeating same keyword
-- Irrelevant or overused terms
+Output the results as a JSON array of strings ONLY.
 
-Only return a Python list of 10 anchor text strings.
-
-Blog content:
-\"\"\"
-{blog_text[:4000]}
-\"\"\"
+Main keyword/topic:
+"{topic}"
 """
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
+        temperature=0.7,
+        max_tokens=150,
     )
-    output = response.choices[0].message.content.strip()
+    content = response.choices[0].message.content.strip()
     try:
-        suggestions = eval(output)
-        return [s.strip() for s in suggestions if isinstance(s, str)]
-    except:
+        anchors = json.loads(content)
+        # Filter anchors length 2-4 words
+        anchors = [a.strip() for a in anchors if 2 <= len(a.split()) <= 4]
+        return anchors
+    except Exception as e:
+        print(f"Error parsing GPT output: {e}")
         return []
 
-def recommend_internal_link(anchors, internal_links):
-    internal_links = internal_links.dropna(subset=["topic", "url"]).copy()
-    corpus = internal_links["topic"].astype(str).tolist() + anchors
-    if not corpus:
-        return []
-
-    vectorizer = TfidfVectorizer().fit(corpus)
-    topic_vecs = vectorizer.transform(internal_links["topic"].astype(str))
-    anchor_vecs = vectorizer.transform(anchors)
-
-    results = []
-    for i, anchor_vec in enumerate(anchor_vecs):
-        sim_scores = cosine_similarity(anchor_vec, topic_vecs).flatten()
-        best_idx = sim_scores.argmax()
-        best_url = internal_links.iloc[best_idx]["url"]
-        results.append((anchors[i], best_url))
+def search_blog_links(df, topic, topic_col, url_col, anchor_col):
+    # Simple substring match on topic column or URLs for the topic keyword
+    mask = df[topic_col].str.contains(topic, case=False, na=False) | df[url_col].str.contains(topic, case=False, na=False)
+    results = df.loc[mask, [url_col, anchor_col]].drop_duplicates()
+    results.columns = ["URL", "Anchor"]
     return results

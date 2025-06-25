@@ -1,48 +1,67 @@
-import streamlit as st
+import os
+import json
 import pandas as pd
-from anchor_utils import generate_anchor_suggestions, recommend_internal_link, parse_html_from_url
+import streamlit as st
+from openai import OpenAI
+from anchor_utils import generate_anchor_texts, search_blog_links
 
-st.title("🔗 Smart Anchor Text Suggestion Tool")
+# Initialize OpenAI client
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Upload CSV
-uploaded_file = st.file_uploader("Upload stake_links.csv (with 'topic' and 'url' columns)", type=["csv"])
-stake_links = None
+def main():
+    st.title("SEO Anchor Text & Internal Link Suggestions")
 
-if uploaded_file:
-    stake_links = pd.read_csv(uploaded_file)
-    st.success("Stake URLs loaded!")
+    st.markdown(
+        """
+        Upload your CSV with live link data. The CSV should contain columns like:
+        - 'Anchor' (existing anchor texts)
+        - 'Target' (topic or target keywords)
+        - 'Client URL' (URLs of internal pages)
+        """
+    )
+    
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    if uploaded_file is not None:
+        df = pd.read_csv(uploaded_file)
+        st.success(f"Loaded {len(df)} rows")
 
-    # Optional dropdown to let user confirm columns
-    col_topic = st.selectbox("Select topic column", stake_links.columns, index=0)
-    col_url = st.selectbox("Select URL column", stake_links.columns, index=1)
-    stake_links = stake_links.rename(columns={col_topic: "topic", col_url: "url"})
+        # Show columns and allow user to pick topic column
+        st.write("Columns detected:", df.columns.tolist())
 
-# Input blog
-st.subheader("📄 Enter Blog Content or URL")
-input_mode = st.radio("Choose input method:", ["Paste blog text", "Fetch from URL"])
+        # Select column containing topic (Target or something)
+        topic_col = st.selectbox("Select the column with topic/keywords", options=df.columns.tolist(), index=df.columns.get_loc('Target') if 'Target' in df.columns else 0)
 
-raw_text = ""
-if input_mode == "Paste blog text":
-    raw_text = st.text_area("Paste blog content here")
-else:
-    input_url = st.text_input("Enter blog URL to scrape HTML")
-    if input_url:
-        raw_text = parse_html_from_url(input_url)
-        st.success("Content extracted from URL!")
+        # Select column for anchors
+        anchor_col = st.selectbox("Select the column with existing anchors", options=df.columns.tolist(), index=df.columns.get_loc('Anchor') if 'Anchor' in df.columns else 0)
 
-# Anchor Suggestion
-if raw_text and stake_links is not None:
-    with st.spinner("Generating anchor suggestions..."):
-        anchor_suggestions = generate_anchor_suggestions(raw_text)
+        # Select column for URLs
+        url_col = st.selectbox("Select the column with URLs", options=df.columns.tolist(), index=df.columns.get_loc('Client URL') if 'Client URL' in df.columns else 0)
 
-    st.subheader("🔍 Suggested Anchor Texts")
-    filtered_anchors = [a for a in anchor_suggestions if a.lower() not in raw_text.lower()]
-    st.write(filtered_anchors)
+        # Select or enter topic
+        unique_topics = df[topic_col].dropna().unique()
+        selected_topic = st.selectbox("Select topic from CSV or enter your own:", options=unique_topics)
+        custom_topic = st.text_input("Or enter custom topic:", value="")
 
-    if not filtered_anchors:
-        st.info("No new anchor suggestions found.")
-    else:
-        st.subheader("🔗 Recommended Internal Links")
-        recommended = recommend_internal_link(filtered_anchors, stake_links)
-        df_recommended = pd.DataFrame(recommended, columns=["Anchor Text", "Recommended Stake URL"])
-        st.dataframe(df_recommended)
+        topic = custom_topic.strip() if custom_topic.strip() else selected_topic
+        st.write(f"Using topic: **{topic}**")
+
+        if st.button("Generate Anchor Text Suggestions"):
+            with st.spinner("Generating anchor texts..."):
+                anchors = generate_anchor_texts(client, topic)
+            if anchors:
+                st.subheader("Anchor Text Suggestions")
+                for i, a in enumerate(anchors, 1):
+                    st.write(f"{i}. {a}")
+            else:
+                st.info("No anchor suggestions generated.")
+
+        if st.button("Search Blog/Internal URLs for Topic"):
+            results = search_blog_links(df, topic, topic_col, url_col, anchor_col)
+            if not results.empty:
+                st.subheader("Matching Blog/Internal URLs")
+                st.dataframe(results)
+            else:
+                st.info("No matching internal URLs found for this topic.")
+
+if __name__ == "__main__":
+    main()
