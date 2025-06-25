@@ -4,9 +4,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import openai
 from langdetect import detect
-import os
-
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Ensure your key is set in env variables
 
 def clean_text(text):
     if pd.isna(text):
@@ -41,7 +38,8 @@ def generate_anchor(text_snippet, keyword):
         if not anchors:
             return [keyword]
         return anchors
-    except Exception:
+    except Exception as e:
+        print(f"OpenAI API call error: {e}")
         return [keyword]
 
 def match_links_and_generate_anchors(
@@ -53,7 +51,6 @@ def match_links_and_generate_anchors(
     stake_url_col,
     stake_lang_col,
 ):
-    # Prepare clean text columns
     opportunities_df['clean_text'] = (
         opportunities_df[opp_url_col].fillna('').astype(str) + " " +
         opportunities_df[anchor_col].fillna('').astype(str)
@@ -64,8 +61,8 @@ def match_links_and_generate_anchors(
 
     vectorizer = TfidfVectorizer().fit(internal_links_df[stake_topic_col])
 
-    results = []
-    all_suggested_anchors = []
+    suggested_links = []
+    suggested_anchors = []
 
     for _, row in opportunities_df.iterrows():
         text = row['clean_text']
@@ -78,7 +75,6 @@ def match_links_and_generate_anchors(
 
         filtered_vectors = vectorizer.transform(filtered_links[stake_topic_col])
         text_vec = vectorizer.transform([text])
-
         similarities = cosine_similarity(text_vec, filtered_vectors).flatten()
         best_idx = similarities.argmax()
 
@@ -86,20 +82,21 @@ def match_links_and_generate_anchors(
 
         snippet = text[:400]
 
-        suggested_anchors_list = generate_anchor(snippet, original_anchor)
+        suggested_anchor_list = generate_anchor(snippet, original_anchor)
 
-        # Save results
-        results.append({
+        suggested_links.append({
             "Opportunity URL": row[opp_url_col],
             "Suggested Internal Link": best_url,
             "Original Anchor": original_anchor,
+            "Detected Language": lang
         })
 
-        # Store suggested anchors with relation to opportunity URL
-        for suggested in suggested_anchors_list:
-            all_suggested_anchors.append({
+        for sug in suggested_anchor_list:
+            suggested_anchors.append({
                 "Opportunity URL": row[opp_url_col],
-                "Suggested Anchor Text": suggested
+                "Original Anchor": original_anchor,
+                "Suggested Anchor Text": sug,
+                "Detected Language": lang
             })
 
-    return pd.DataFrame(results), pd.DataFrame(all_suggested_anchors)
+    return pd.DataFrame(suggested_links), pd.DataFrame(suggested_anchors)
