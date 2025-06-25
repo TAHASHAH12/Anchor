@@ -20,38 +20,18 @@ if opp_file and stake_file:
     st.write("Select the relevant columns for your data:")
 
     with st.form("column_selector_form"):
-        opp_url_col = st.selectbox(
-            "Opportunities CSV: URL Column",
-            opp_df.columns,
-            index=opp_df.columns.get_loc("Live Link") if "Live Link" in opp_df.columns else 0
-        )
-        anchor_col = st.selectbox(
-            "Opportunities CSV: Anchor Text Column",
-            opp_df.columns,
-            index=opp_df.columns.get_loc("Anchor") if "Anchor" in opp_df.columns else 0
-        )
+        opp_url_col = st.selectbox("Opportunities CSV: URL Column", opp_df.columns, index=opp_df.columns.get_loc("Live Link") if "Live Link" in opp_df.columns else 0)
+        anchor_col = st.selectbox("Opportunities CSV: Anchor Text Column", opp_df.columns, index=opp_df.columns.get_loc("Anchor") if "Anchor" in opp_df.columns else 0)
 
-        stake_url_col = st.selectbox(
-            "Internal Links CSV: URL Column",
-            stake_df.columns,
-            index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0
-        )
-        stake_topic_col = st.selectbox(
-            "Internal Links CSV: Topic/Keyword Column",
-            stake_df.columns,
-            index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0
-        )
-        stake_lang_col = st.selectbox(
-            "Internal Links CSV: Language Column",
-            stake_df.columns,
-            index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0
-        )
+        stake_url_col = st.selectbox("Internal Links CSV: URL Column", stake_df.columns, index=stake_df.columns.get_loc("url") if "url" in stake_df.columns else 0)
+        stake_topic_col = st.selectbox("Internal Links CSV: Topic/Keyword Column", stake_df.columns, index=stake_df.columns.get_loc("topic") if "topic" in stake_df.columns else 0)
+        stake_lang_col = st.selectbox("Internal Links CSV: Language Column", stake_df.columns, index=stake_df.columns.get_loc("lang") if "lang" in stake_df.columns else 0)
 
         submitted = st.form_submit_button("Process Matching")
 
     if submitted:
         with st.spinner("✅ Processing smart matching..."):
-            results_df = match_links_and_generate_anchors(
+            results_df, anchors_df = match_links_and_generate_anchors(
                 opp_df,
                 stake_df,
                 anchor_col=anchor_col,
@@ -61,13 +41,24 @@ if opp_file and stake_file:
                 stake_lang_col=stake_lang_col,
             )
 
-        st.subheader("🔍 Recommended Internal Links + Anchor Texts")
+        st.subheader("🔍 Recommended Internal Links")
         st.dataframe(results_df)
 
-        csv = results_df.to_csv(index=False)
+        st.subheader("💡 Suggested Anchor Texts")
+        st.dataframe(anchors_df)
+
+        csv_results = results_df.to_csv(index=False)
         st.download_button(
-            label="⬇ Download Results CSV",
-            data=csv,
-            file_name="recommended_anchors.csv",
+            label="⬇ Download Recommended Links CSV",
+            data=csv_results,
+            file_name="recommended_internal_links.csv",
+            mime="text/csv"
+        )
+
+        csv_anchors = anchors_df.to_csv(index=False)
+        st.download_button(
+            label="⬇ Download Suggested Anchors CSV",
+            data=csv_anchors,
+            file_name="suggested_anchors.csv",
             mime="text/csv"
         )

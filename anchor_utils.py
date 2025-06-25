@@ -6,7 +6,7 @@ import openai
 from langdetect import detect
 import os
 
-openai.api_key = os.getenv("OPENAI_API_KEY")  # Set your OpenAI API key in env
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Ensure your key is set in env variables
 
 def clean_text(text):
     if pd.isna(text):
@@ -37,7 +37,6 @@ def generate_anchor(text_snippet, keyword):
         )
         anchors_text = response.choices[0].message.content.strip()
         anchors = [a.strip() for a in anchors_text.split(",") if a.strip()]
-        # Filter out the original anchor if present
         anchors = [a for a in anchors if a.lower() != keyword.lower()]
         if not anchors:
             return [keyword]
@@ -54,7 +53,7 @@ def match_links_and_generate_anchors(
     stake_url_col,
     stake_lang_col,
 ):
-    # Prepare clean text
+    # Prepare clean text columns
     opportunities_df['clean_text'] = (
         opportunities_df[opp_url_col].fillna('').astype(str) + " " +
         opportunities_df[anchor_col].fillna('').astype(str)
@@ -66,10 +65,11 @@ def match_links_and_generate_anchors(
     vectorizer = TfidfVectorizer().fit(internal_links_df[stake_topic_col])
 
     results = []
+    all_suggested_anchors = []
 
     for _, row in opportunities_df.iterrows():
         text = row['clean_text']
-        original_anchor = row[anchor_col]
+        original_anchor = str(row[anchor_col])
         lang = detect_language(text)
 
         filtered_links = internal_links_df[internal_links_df[stake_lang_col].str.startswith(lang[:2])]
@@ -87,14 +87,19 @@ def match_links_and_generate_anchors(
         snippet = text[:400]
 
         suggested_anchors_list = generate_anchor(snippet, original_anchor)
-        suggested_anchors = "; ".join(suggested_anchors_list)
 
+        # Save results
         results.append({
             "Opportunity URL": row[opp_url_col],
             "Suggested Internal Link": best_url,
             "Original Anchor": original_anchor,
-            "Suggested Anchor Texts": suggested_anchors,
-            "Detected Language": lang
         })
 
-    return pd.DataFrame(results)
+        # Store suggested anchors with relation to opportunity URL
+        for suggested in suggested_anchors_list:
+            all_suggested_anchors.append({
+                "Opportunity URL": row[opp_url_col],
+                "Suggested Anchor Text": suggested
+            })
+
+    return pd.DataFrame(results), pd.DataFrame(all_suggested_anchors)
