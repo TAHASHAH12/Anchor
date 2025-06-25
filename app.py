@@ -14,21 +14,34 @@ uploaded_file = col1.file_uploader("📄 Upload Blog File (HTML or TXT)", type=[
 blog_text_input = col2.text_area("✏️ Or Paste Blog Content Here", height=150)
 url_input = col3.text_input("🌐 Or Paste Blog URL")
 
-# Upload internal links
-stake_links_file = st.file_uploader("📎 Upload Stake Internal Links CSV (topic,url)", type=["csv"])
+# Upload internal links CSV
+stake_links_file = st.file_uploader("📎 Upload Stake Internal Links CSV (any column names)", type=["csv"])
 
-# Try to extract blog text from one of the inputs
+# Load internal links CSV and allow column selection
+stake_links = None
+topic_col = url_col = None
+
+if stake_links_file:
+    stake_links_df = pd.read_csv(stake_links_file)
+    st.subheader("🔧 Select Columns for Topics and URLs")
+    all_columns = stake_links_df.columns.tolist()
+
+    topic_col = st.selectbox("🧠 Select the Topic Column", all_columns, index=0)
+    url_col = st.selectbox("🔗 Select the URL Column", all_columns, index=1 if len(all_columns) > 1 else 0)
+
+    if topic_col and url_col:
+        stake_links = stake_links_df[[topic_col, url_col]].dropna()
+        stake_links.columns = ["topic", "url"]  # standardize column names
+
+# Extract blog content
 def extract_blog_content():
     existing_anchors = []
-
     if uploaded_file:
         raw_html = uploaded_file.read().decode("utf-8")
         existing_anchors = get_existing_anchors(raw_html)
         return clean_html(raw_html), existing_anchors
-
     elif blog_text_input.strip():
         return blog_text_input, []
-
     elif url_input:
         try:
             response = requests.get(url_input, timeout=10)
@@ -38,15 +51,10 @@ def extract_blog_content():
         except Exception as e:
             st.error(f"Failed to fetch URL: {e}")
             return "", []
-    
     return "", []
 
-# Process and output
-if stake_links_file and (uploaded_file or blog_text_input.strip() or url_input.strip()):
-    stake_links = pd.read_csv(stake_links_file)
-    stake_links = stake_links.dropna(subset=["topic", "url"])
-    stake_links = stake_links[stake_links["topic"].apply(lambda x: isinstance(x, str))]
-
+# Main logic
+if stake_links is not None and (uploaded_file or blog_text_input.strip() or url_input.strip()):
     raw_text, existing_anchors = extract_blog_content()
 
     if raw_text.strip() == "":
